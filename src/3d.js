@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 
 const scene = new THREE.Scene();
 
@@ -14,57 +15,82 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000,
 );
+camera.position.set(0, 5, 8);
 
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-camera.position.set(0, 5, 8);
-camera.lookAt(0, 0, 0);
-
-// Luzes
-scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
 const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 10, 5);
+light.position.set(10, 20, 10);
+light.castShadow = true;
 scene.add(light);
 
-// Chão
-/*const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(10, 10),
-    new THREE.MeshStandardMaterial({ color: 0x555555 }),
-  );
-
-floor.rotation.x = -Math.PI / 2;
-scene.add(floor);*/
-
-// Jogador
 let player;
 
-// Alvo
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(0.5, 0.5, 0.5),
+const mtlLoader = new MTLLoader();
+
+mtlLoader.load("/models/f15c/F-15C_Eagle.mtl", (materials) => {
+  materials.preload();
+
+  const objLoader = new OBJLoader();
+  objLoader.setMaterials(materials);
+
+  objLoader.load("/models/f15c/F-15C_Eagle.obj", (object) => {
+    object.scale.set(0.2, 0.2, 0.2);
+
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+
+    object.position.sub(center);
+    object.position.y = 0;
+
+    object.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    player = object;
+    scene.add(player);
+  });
+});
+
+const circulo = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2, 32, 32),
   new THREE.MeshStandardMaterial({ color: 0xff0000 }),
 );
+scene.add(circulo);
 
-scene.add(cube);
-cube.position.set(2, 0.25, 2);
+circulo.position.set(2, 0.25, 2);
 
-let target = new THREE.Vector3(
-  (Math.random() - 0.5) * 18,
-  0.25,
-  (Math.random() - 0.5) * 18,
-);
+// destino aleatório
+const target = new THREE.Vector3();
 
 function novoDestino() {
   target.set((Math.random() - 0.5) * 18, 0.25, (Math.random() - 0.5) * 18);
 }
 
-// Pontuação
+novoDestino();
+
+const keys = {};
+
+window.addEventListener("keydown", (e) => {
+  keys[e.code] = true;
+});
+
+window.addEventListener("keyup", (e) => {
+  keys[e.code] = false;
+});
+
 let score = 0;
-const gameTime = 60; // segundos
-const clock = new THREE.Clock();
 let gameOver = false;
+const gameTime = 60;
+const clock = new THREE.Clock();
 
 const scoreText = document.createElement("div");
 scoreText.style.position = "absolute";
@@ -76,49 +102,13 @@ scoreText.innerHTML = "Pontos: 0";
 document.body.appendChild(scoreText);
 
 const timerText = document.createElement("div");
-
 timerText.style.position = "absolute";
 timerText.style.top = "50px";
 timerText.style.left = "10px";
 timerText.style.color = "white";
 timerText.style.fontSize = "30px";
 timerText.innerHTML = "Tempo: 60";
-
 document.body.appendChild(timerText);
-
-// Controles
-const keys = {};
-
-window.addEventListener("keydown", (e) => {
-  keys[e.key.toLowerCase()] = true;
-});
-
-window.addEventListener("keyup", (e) => {
-  keys[e.key.toLowerCase()] = false;
-});
-
-// Carrega OBJ
-const loader = new OBJLoader();
-
-loader.load("/three/BASEmodel.obj", (object) => {
-  object.scale.set(0.5, 0.5, 0.5);
-
-  const box = new THREE.Box3().setFromObject(object);
-  const center = box.getCenter(new THREE.Vector3());
-
-  object.position.sub(center);
-
-  object.position.y = 0;
-
-  player = object;
-
-  scene.add(player);
-});
-
-function randomCube() {
-  cube.position.x = (Math.random() - 0.5) * 16;
-  cube.position.z = (Math.random() - 0.5) * 16;
-}
 
 function animate() {
   if (gameOver) return;
@@ -130,34 +120,93 @@ function animate() {
 
   timerText.innerHTML = "Tempo: " + remaining;
 
-  if (remaining <= 0 && !gameOver) {
+  if (remaining <= 0) {
     gameOver = true;
-    alert("Fim de jogo!\n\nPontuação: " + score);
+    alert("Fim de jogo!\nPontuação: " + score);
     location.reload();
     return;
   }
 
-  if (player && !gameOver) {
-    if (keys["w"] || keys["arrowup"]) player.position.z -= 0.08;
-    if (keys["s"] || keys["arrowdown"]) player.position.z += 0.08;
-    if (keys["a"] || keys["arrowleft"]) player.position.x -= 0.08;
-    if (keys["d"] || keys["arrowright"]) player.position.x += 0.08;
+  if (player) {
+    const speed = 0.2;
+    if (keys["KeyW"] || keys["ArrowUp"]) player.position.z -= speed;
+    if (keys["KeyS"] || keys["ArrowDown"]) player.position.z += speed;
+    if (keys["KeyA"] || keys["ArrowLeft"]) player.position.x -= speed;
+    if (keys["KeyD"] || keys["ArrowRight"]) player.position.x += speed;
+
     player.rotation.y += 0.01;
 
-    // Colisão
-    const d = player.position.distanceTo(cube.position);
+    const d = player.position.distanceTo(circulo.position);
 
     if (d < 1) {
-      score++;
-      scoreText.innerHTML = "Pontos: " + score;
-      randomCube();
-      novoDestino();
+      {
+        score++;
+        scoreText.innerHTML = "Pontos: " + score;
+        novoDestino();
+      }
     }
-  }
-  cube.position.lerp(target, 0.06); //velocidade do cubo
+    if (score === 0) {
+      if (circulo.position.distanceTo(target) < 0.01) {
+        novoDestino();
+      }
+    }
 
-  if (cube.position.distanceTo(target) < 0.3) {
-    novoDestino();
+    if (score === 1) {
+      if (circulo.position.distanceTo(target) < 0.02) {
+        novoDestino();
+      }
+    }
+    if (score === 2) {
+      if (circulo.position.distanceTo(target) < 0.03) {
+        novoDestino();
+      }
+    }
+    if (score === 3) {
+      if (circulo.position.distanceTo(target) < 0.04) {
+        novoDestino();
+      }
+    }
+    if (score === 4) {
+      if (circulo.position.distanceTo(target) < 0.05) {
+        novoDestino();
+      }
+    }
+    if (score === 5) {
+      if (circulo.position.distanceTo(target) < 0.06) {
+        novoDestino();
+      }
+    }
+    if (score === 6) {
+      if (circulo.position.distanceTo(target) < 0.07) {
+        novoDestino();
+      }
+    }
+    if (score === 7) {
+      if (circulo.position.distanceTo(target) < 0.08) {
+        novoDestino();
+      }
+    }
+    if (score === 8) {
+      if (circulo.position.distanceTo(target) < 0.09) {
+        novoDestino();
+      }
+    }
+    if (score === 9) {
+      if (circulo.position.distanceTo(target) < 0.1) {
+        novoDestino();
+      }
+    }
+    if (score === 10) {
+      if (circulo.position.distanceTo(target) < 0.2) {
+        novoDestino();
+      }
+    }
+    if (score >= 11) {
+      if (circulo.position.distanceTo(target) < 0.3) {
+        novoDestino();
+      }
+    }
+    circulo.position.lerp(target, 0.1);
   }
 
   renderer.render(scene, camera);
